@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY")
+api_key = os.getenv("GOOGLE_API_KEY")    # will be loaded from .env
 print(f'api = {api_key}')
 
 if not api_key:
@@ -21,7 +21,6 @@ genai.configure(api_key=api_key)
 
 try:
     df_medicines = pd.read_csv('medicine_data.csv')
-    # Clean column names to prevent issues with extra spaces
     df_medicines.columns = df_medicines.columns.str.strip()
     print("INFO: Medicine dataset loaded successfully.")
 except FileNotFoundError:
@@ -31,7 +30,7 @@ except FileNotFoundError:
 app = FastAPI()
 
 # ADD CORS MIDDLEWARE 
-origins = ["*"] # For development. For production, change "*" to your website's domain.
+origins = ["*"] # change "*" to website's domain.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -40,7 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# HELPER FUNCTION
 
 def find_medicine_details(medicine_name: str, active_salts: list):
     """
@@ -49,7 +47,6 @@ def find_medicine_details(medicine_name: str, active_salts: list):
     if df_medicines is None or df_medicines.empty:
         return None
 
-    # find a match using the medicine name
     if medicine_name:
         name_result = df_medicines[df_medicines['Medicine Name'].str.contains(medicine_name, case=False, na=False)]
         if not name_result.empty:
@@ -58,11 +55,9 @@ def find_medicine_details(medicine_name: str, active_salts: list):
                 "uses": first_match.get("Uses"),
                 "side_effects": first_match.get("Side_effects")
             }
-
-    # fallback to searching by active salts.
     if active_salts:
         for salt in active_salts:
-            # Clean up the salt name (e.g., remove "(500mg)") before searching
+            # Clean up the salt name
             cleaned_salt = salt.split('(')[0].strip()
             if not cleaned_salt:
                 continue
@@ -166,20 +161,17 @@ async def extract_medicine_data(file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        # data from the image using Gemini
+        # data from the image, using Gemini
         extracted_data = extract_data_from_image(tmp_path)
         
         if "error" in extracted_data:
             raise HTTPException(status_code=500, detail=extracted_data["error"])
         
-        # Get both name and salts for the search
         medicine_name = extracted_data.get("medicine_name")
         active_salts = extracted_data.get("active_salts", []) # Default to empty list
         
-        # Call the upgraded search function
         additional_details = find_medicine_details(medicine_name, active_salts)
         
-        # Step C: Merge the two data sources
         if additional_details:
             extracted_data.update(additional_details)
         else:
